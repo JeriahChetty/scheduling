@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PTSA Student Schedule App</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <style>
+    /* Branding & Tab Styles */
+    header {
+      background-color: #fff; /* PTSA dark blue */
+      color: #003366;
+      padding: 15px;
+      text-align: center;
+    }
+    header img {
+      vertical-align: middle;
+      max-height: 50px;
+      margin-right: 15px;
+    }
+    header h1 {
+      display: inline;
+      font-size: 2em;
+      vertical-align: middle;
+      margin: 0;
+    }
+    .tab-container {
+      display: flex;
+      border-bottom: 2px solid #ccc;
+      margin-bottom: 20px;
+    }
+    .tab-container button {
+      background-color: #003366;
+      border: 1px solid #ccc;
+      border-bottom: none;
+      padding: 10px 20px;
+      margin-right: 5px;
+      cursor: pointer;
+      font-size: 1em;
+      transition: background-color 0.3s;
+    }
+    .tab-container button:hover {
+      background-color: #e0e0e0;
+    }
+    .tab-container button.active {
+      background-color: #fff;
+      border-bottom: 2px solid #fff;
+      font-weight: bold;
+      color: #003366;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .export-button {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 8px 16px;
+      background-color: #007BFF;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 4px;
+    }
+  </style>
+  <!-- Load Google Charts -->
+  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+  <script>
+    // Inline editing functions for machines (unchanged)
+    function editMachine(id) {
+      var nameField = document.getElementById('name-' + id);
+      var levelField = document.getElementById('level-' + id);
+      var editButton = document.getElementById('edit-' + id);
+      if (editButton.innerText === 'Edit') {
+        nameField.contentEditable = 'true';
+        levelField.contentEditable = 'true';
+        nameField.focus();
+        editButton.innerText = 'Save';
+      } else {
+        nameField.contentEditable = 'false';
+        levelField.contentEditable = 'false';
+        editButton.innerText = 'Edit';
+        fetch('/update_machine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: id,
+            name: nameField.innerText,
+            level: levelField.innerText
+          }),
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            alert('Machine updated successfully.');
+          } else {
+            alert('Error updating machine.');
+          }
+        });
+      }
+    }
+    function deleteMachine(id) {
+      if (confirm('Are you sure you want to delete this machine?')) {
+        fetch('/delete_machine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: id }),
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            document.getElementById('machine-' + id).remove();
+            alert('Machine deleted successfully.');
+          } else {
+            alert('Error deleting machine.');
+          }
+        });
+      }
+    }
+  </script>
+</head>
+<body>
+  <header>
+    <h1>PTSA Student Schedule App</h1>
+  </header>
+  <div class="container">
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="flashes">
+          {% for category, message in messages %}
+            <li class="{{ category }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <!-- Tab Navigation -->
+    <div class="tab-container">
+      <button class="tab-link active" data-tab="upload-data">Upload Data</button>
+      <button class="tab-link" data-tab="machine-list">Machine List</button>
+      <button class="tab-link" data-tab="add-machine">Add Machine</button>
+      <button class="tab-link" data-tab="generate-schedule">Generate Schedule</button>
+      <button class="tab-link" data-tab="manual-update">Manual Update</button>
+      <button class="tab-link" data-tab="view-schedule">View Schedule</button>
+      <button class="tab-link" data-tab="export-schedule">Export Schedule</button>
+    </div>
+
+    <!-- Tab Contents -->
+    <div id="upload-data" class="tab-content active">
+      <section>
+        <h2>Upload Student Data</h2>
+        <form action="/upload" method="POST" enctype="multipart/form-data">
+          <label for="file">Upload Student Data (Excel):</label>
+          <input type="file" name="file" accept=".xlsx" required>
+          <button type="submit">Upload</button>
+        </form>
+      </section>
+    </div>
+
+    <div id="machine-list" class="tab-content">
+      {% if machine_levels %}
+      <section>
+        <h2>Saved Machines and Levels</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Machine</th>
+              <th>Level</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in machine_levels %}
+              <tr id="machine-{{ entry.id }}">
+                <td id="name-{{ entry.id }}">{{ entry.machine }}</td>
+                <td id="level-{{ entry.id }}">{{ entry.level }}</td>
+                <td>
+                  <button id="edit-{{ entry.id }}" onclick="editMachine('{{ entry.id }}')">Edit</button>
+                  <button onclick="deleteMachine('{{ entry.id }}')">Delete</button>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      {% endif %}
+    </div>
+
+    <div id="add-machine" class="tab-content">
+      <section>
+        <h2>Add Machine & Level</h2>
+        <form action="/add_machine_level" method="POST">
+          <label for="machine">Machine:</label>
+          <input type="text" name="machine" placeholder="Machine Name" required>
+          <label for="level">Level:</label>
+          <input type="text" name="level" placeholder="Student Level" required>
+          <button type="submit">Add Machine & Level</button>
+        </form>
+      </section>
+    </div>
+
+    <div id="generate-schedule" class="tab-content">
+      <section>
+        <h2>Generate Schedule Automatically</h2>
+        <form action="/generate_schedule" method="POST">
+          <label for="slot_duration">Base Slot Duration (minutes):</label>
+          <input type="number" name="slot_duration" required value="{{ schedule_form.slot_duration or '' }}">
+          
+          <label for="start_date">Start Date (YYYY-MM-DD):</label>
+          <input type="date" name="start_date" required value="{{ schedule_form.start_date or '' }}">
+          
+          <label for="end_date">End Date (YYYY-MM-DD):</label>
+          <input type="date" name="end_date" required value="{{ schedule_form.end_date or '' }}">
+          
+          <label for="start_time">Working Day Start Time (HH:MM):</label>
+          <input type="time" name="start_time" required value="{{ schedule_form.start_time or '' }}">
+          
+          <label for="end_time">Working Day End Time (HH:MM):</label>
+          <input type="time" name="end_time" required value="{{ schedule_form.end_time or '' }}">
+          
+          <label for="threshold_mark">Threshold Mark for Extra Time:</label>
+          <input type="number" step="any" name="threshold_mark" placeholder="e.g., 50" required value="{{ schedule_form.threshold_mark or '' }}">
+          
+          <label for="auto_extra_time">Automatic Extra Time (minutes):</label>
+          <input type="number" name="auto_extra_time" placeholder="Extra minutes if mark is low" required value="{{ schedule_form.auto_extra_time or '' }}">
+          
+          <label for="allowance_time">Allowance Time Between Slots (minutes):</label>
+          <input type="number" name="allowance_time" placeholder="e.g., 5" required value="{{ schedule_form.allowance_time or '0' }}">
+          
+          <fieldset>
+            <legend>Scheduling Mode:</legend>
+            <label>
+              <input type="radio" name="scheduling_mode" value="forward"
+                {% if schedule_form.scheduling_mode == 'forward' or not schedule_form.scheduling_mode %} checked {% endif %}>
+              Forward Scheduling
+            </label>
+            <label>
+              <input type="radio" name="scheduling_mode" value="backward"
+                {% if schedule_form.scheduling_mode == 'backward' %} checked {% endif %}>
+              Backward Scheduling
+            </label>
+          </fieldset>
+          
+          <fieldset>
+            <legend>Priority Rule:</legend>
+            <label>
+              <input type="radio" name="priority_rule" value="FIFO"
+                {% if schedule_form.priority_rule == 'FIFO' or not schedule_form.priority_rule %} checked {% endif %}>
+              FIFO
+            </label>
+            <label>
+              <input type="radio" name="priority_rule" value="SPT"
+                {% if schedule_form.priority_rule == 'SPT' %} checked {% endif %}>
+              SPT (Shortest Processing Time)
+            </label>
+            <label>
+              <input type="radio" name="priority_rule" value="LPT"
+                {% if schedule_form.priority_rule == 'LPT' %} checked {% endif %}>
+              LPT (Longest Processing Time)
+            </label>
+          </fieldset>
+          
+          <button type="submit">Generate Schedule</button>
+        </form>
+      </section>
+    </div>
+
+    <div id="manual-update" class="tab-content">
+      <section>
+        <h2>Manual Time Adjustment</h2>
+        <form action="/manual_update" method="POST">
+          <label for="student_search">Search Student Name:</label>
+          <input type="text" id="student_search" placeholder="Enter student name" onkeyup="filterStudents()">
+          
+          <label for="student_select">Select Student:</label>
+          <select id="student_select" name="student_index" required>
+            {% for student in students %}
+              <option value="{{ loop.index0 }}">{{ student["Student Name"] }}</option>
+            {% endfor %}
+          </select>
+          
+          <label for="manual_extra_time">Extra Time to Add (minutes):</label>
+          <input type="number" name="manual_extra_time" required>
+          
+          <label for="slot_duration_manual">Base Slot Duration (minutes):</label>
+          <input type="number" name="slot_duration_manual" required>
+          
+          <label for="start_time_manual">Initial Start Time (HH:MM):</label>
+          <input type="time" name="start_time_manual" required>
+          
+          <button type="submit">Apply Manual Update</button>
+        </form>
+      </section>
+    </div>
+
+    <div id="view-schedule" class="tab-content">
+      <section>
+        <h2>View Generated Schedule</h2>
+        <!-- Navigation for multi-day schedule visualization -->
+        <div>
+          <button onclick="prevDay()">Previous Day</button>
+          <span id="currentDay"></span>
+          <button onclick="nextDay()">Next Day</button>
+        </div>
+        <!-- Timeline chart container -->
+        <div id="timeline"></div>
+        <!-- Table version of schedule -->
+        <h3>Schedule Table</h3>
+        <div class="data-container">
+          {% if not schedule_df.empty %}
+            {{ schedule_df.to_html(classes='data-table', index=False) | safe }}
+          {% else %}
+            <p>No schedule generated yet.</p>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+
+    <div id="export-schedule" class="tab-content">
+      <section>
+        <h2>Export Schedule</h2>
+        <a href="/export_schedule" class="export-button">Export Schedule</a>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // Tab navigation functionality
+    const tabLinks = document.querySelectorAll('.tab-link');
+    const tabContents = document.querySelectorAll('.tab-content');
+    tabLinks.forEach(link => {
+      link.addEventListener('click', () => {
+        tabLinks.forEach(btn => btn.classList.remove('active'));
+        tabContents.forEach(content => content.classList.remove('active'));
+        link.classList.add('active');
+        const tabId = link.getAttribute('data-tab');
+        document.getElementById(tabId).classList.add('active');
+      });
+    });
+
+    // Search functionality for Manual Time Adjustment
+    function filterStudents() {
+      var input = document.getElementById("student_search");
+      var filter = input.value.toUpperCase();
+      var select = document.getElementById("student_select");
+      var options = select.getElementsByTagName("option");
+      for (var i = 0; i < options.length; i++) {
+        var txtValue = options[i].textContent || options[i].innerText;
+        if (txtValue.toUpperCase().indexOf(filter) > -1) {
+          options[i].style.display = "";
+        } else {
+          options[i].style.display = "none";
+        }
+      }
+    }
+
+    // Timeline visualization functionality for View Schedule tab
+    google.charts.load("current", {packages:["timeline"]});
+    google.charts.setOnLoadCallback(drawChart);
+
+    var scheduleData = JSON.parse('{{ schedule_df.to_dict(orient="records") | tojson | safe }}');
+    var minDate, maxDate, allDates = [];
+    if(scheduleData.length > 0){
+      // Calculate the min and max dates based on schedule data
+      minDate = new Date(Math.min(...scheduleData.map(d => new Date(d["Start Time"]))));
+      maxDate = new Date(Math.max(...scheduleData.map(d => new Date(d["End Time"]))));
+      for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 1)) {
+          allDates.push(new Date(d).toISOString().split("T")[0]);
+      }
+    }
+    var currentIndex = 0;
+
+    function drawChart() {
+      if (allDates.length === 0) {
+        document.getElementById("currentDay").innerText = "No schedule available.";
+        document.getElementById("timeline").innerHTML = "";
+        return;
+      }
+      var selectedDate = allDates[currentIndex];
+      document.getElementById("currentDay").innerText = "Showing Schedule for: " + selectedDate;
+      var filteredData = scheduleData.filter(d => {
+        // Check if the Start Time begins with the selected date (YYYY-MM-DD)
+        return d["Start Time"].startsWith(selectedDate);
+      });
+      var dataTable = new google.visualization.DataTable();
+      dataTable.addColumn({ type: 'string', id: 'Machine' });
+      dataTable.addColumn({ type: 'string', id: 'Student' });
+      dataTable.addColumn({ type: 'date', id: 'Start' });
+      dataTable.addColumn({ type: 'date', id: 'End' });
+
+      if(filteredData.length > 0){
+        var rows = filteredData.map(record => {
+          // Assume Start Time and End Time are in "YYYY-MM-DD HH:MM" format
+          var startDate = new Date(record["Start Time"]);
+          var endDate = new Date(record["End Time"]);
+          return [record["Machine"], record["Student"], startDate, endDate];
+        });
+        dataTable.addRows(rows);
+      } else {
+        // If no slots for the day, show a placeholder row covering the entire day.
+        dataTable.addRow(["", "No Bookings", new Date(selectedDate + "T00:00:00"), new Date(selectedDate + "T23:59:59")]);
+      }
+
+      var container = document.getElementById('timeline');
+      var chart = new google.visualization.Timeline(container);
+      var options = { timeline: { showRowLabels: true }, height: 400 };
+      chart.draw(dataTable, options);
+    }
+
+    function nextDay() {
+      if (currentIndex < allDates.length - 1) {
+        currentIndex++;
+        drawChart();
+      }
+    }
+
+    function prevDay() {
+      if (currentIndex > 0) {
+        currentIndex--;
+        drawChart();
+      }
+    }
+  </script>
+</body>
+</html>

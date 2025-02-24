@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>View Schedule</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+</head>
+<body>
+  <header>PTSA Student Schedule</header>
+  <div class="container">
+    <h1>Generated Schedule</h1>
+
+    <!-- Navigation Buttons -->
+    <div>
+      <button onclick="prevDay()">Previous</button>
+      <span id="currentDay"></span>
+      <button onclick="nextDay()">Next</button>
+    </div>
+
+    <!-- Timeline Chart -->
+    <div id="timeline"></div>
+
+    <!-- Table Version of Schedule -->
+    <h2>Schedule Table</h2>
+    <table id="scheduleTable">
+      <thead>
+        <tr>
+          <th>Machine</th>
+          <th>Student</th>
+          <th>Start Time</th>
+          <th>End Time</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <a href="{{ url_for('index') }}" class="export-button">Back to Home</a>
+  </div>
+
+  <script type="text/javascript">
+    google.charts.load("current", {packages:["timeline"]});
+    google.charts.setOnLoadCallback(drawChart);
+
+    var scheduleData = JSON.parse('{{ schedule_data|tojson|safe }}');
+
+    // Get unique dates, even if no slots exist for some days
+    var minDate = new Date(Math.min(...scheduleData.map(d => new Date(d["Start Time"]))));
+    var maxDate = new Date(Math.max(...scheduleData.map(d => new Date(d["End Time"]))));
+    
+    var allDates = [];
+    for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 1)) {
+        allDates.push(new Date(d).toISOString().split("T")[0]);
+    }
+
+    var currentIndex = 0;
+
+    function drawChart() {
+      if (allDates.length === 0) return;
+
+      var selectedDate = allDates[currentIndex];
+      document.getElementById("currentDay").innerText = "Showing Schedule for: " + selectedDate;
+
+      var filteredData = scheduleData.filter(d => d["Start Time"].startsWith(selectedDate));
+
+      var dataTable = new google.visualization.DataTable();
+      dataTable.addColumn({ type: 'string', id: 'Machine' });
+      dataTable.addColumn({ type: 'string', id: 'Student' });
+      dataTable.addColumn({ type: 'date', id: 'Start' });
+      dataTable.addColumn({ type: 'date', id: 'End' });
+
+      // Update table data
+      var tableBody = document.querySelector("#scheduleTable tbody");
+      tableBody.innerHTML = "";
+
+      if (filteredData.length > 0) {
+        var rows = filteredData.map(record => [
+          record["Machine"], 
+          record["Student"], 
+          new Date(record["Start Time"]), 
+          new Date(record["End Time"])
+        ]);
+
+        dataTable.addRows(rows);
+
+        // Populate table
+        filteredData.forEach(record => {
+          var row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${record["Machine"]}</td>
+            <td>${record["Student"]}</td>
+            <td>${new Date(record["Start Time"]).toLocaleString()}</td>
+            <td>${new Date(record["End Time"]).toLocaleString()}</td>
+          `;
+          tableBody.appendChild(row);
+        });
+      } else {
+        // Show empty timeline with "No Bookings"
+        dataTable.addRow(["", "No Bookings", new Date(selectedDate + "T00:00:00"), new Date(selectedDate + "T23:59:59")]);
+
+        // Add "No Bookings" row in table
+        var row = document.createElement("tr");
+        row.innerHTML = `<td colspan="4" style="text-align:center;">No Bookings</td>`;
+        tableBody.appendChild(row);
+      }
+
+      var container = document.getElementById('timeline');
+      var chart = new google.visualization.Timeline(container);
+      var options = { timeline: { showRowLabels: true }, height: 400 };
+      chart.draw(dataTable, options);
+    }
+
+    function nextDay() {
+      if (currentIndex < allDates.length - 1) {
+        currentIndex++;
+        drawChart();
+      }
+    }
+
+    function prevDay() {
+      if (currentIndex > 0) {
+        currentIndex--;
+        drawChart();
+      }
+    }
+  </script>
+</body>
+</html>
